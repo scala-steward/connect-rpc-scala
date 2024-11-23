@@ -23,18 +23,17 @@ They are similar, but GRPC-WEB target is to be as close to GRPC as possible, whi
 web-friendly: better TypeScript libraries, better support for JSON, it supports GET-requests, etc.
 
 Both protocols support encoding data in Protobuf and JSON.
-JSON is more web-friendly,
-but it requires having some component in the middle, which will provide JSON → Protobuf conversion
-during the request phase and Protobuf → JSON conversion during the response phase.
+JSON is more web-friendly, but it requires having some component in the middle, providing JSON → Protobuf
+conversion during the request phase and Protobuf → JSON conversion during the response phase.
 
-And this can be tricky to setup:
+*And this can be tricky to set up*:
 
 The suggested approach in this case is to use a web-server ([Envoy](https://scalapb.github.io)) as a proxy,
-which supports translation of both protocols to GRPC.
-The general setup of the Envoy in this case only allows proxying HTTP1.1 requests to GRPC, but still having protobuf
+supporting translation of both protocols to GRPC.
+The general setup of the Envoy in this case allows proxying HTTP/1.1 requests to GRPC, while still having protobuf
 messages in the body of the request.
 
-To support JSON, Envoy needs to be configured with compiled Protobuf descriptors, which is not very convenient.
+To support JSON, Envoy needs to be configured with Protobuf descriptors, which is not very convenient.
 
 That's where this library comes in.
 
