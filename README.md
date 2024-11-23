@@ -35,7 +35,7 @@ messages in the body of the request.
 
 To support JSON, Envoy needs to be configured with Protobuf descriptors, which is not very convenient.
 
-That's where this library comes in.
+*That's where this library comes in*:
 
 It allows exposing GRPC services, built with [ScalaPB](https://scalapb.github.io), to the clients
 using Connect-RPC protocol (with JSON messages), without Envoy or any other proxy, so a web service can expose
