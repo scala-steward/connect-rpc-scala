@@ -5,6 +5,7 @@ import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import io.grpc.ServerServiceDefinition
 import org.http4s.client.Client
+import org.http4s.headers.`Content-Type`
 import org.http4s.implicits.*
 import org.http4s.{Method, *}
 import org.ivovk.connect_rpc_scala.test.TestService.TestServiceGrpc.TestService
@@ -22,28 +23,28 @@ class HttpTest extends AnyFunSuite, Matchers {
       Future.successful(AddResponse(request.a + request.b))
   }
 
-
-
   test("basic") {
     val services: Seq[ServerServiceDefinition] = Seq(
       TestService.bindService(TestServiceImpl, ExecutionContext.global)
     )
 
-    val httpApp = ConnectRpcHttpRoutes.make[IO](services.toList).orNotFound
+    ConnectRpcHttpRoutes.create[IO](services.toList)
+      .flatMap { routes =>
+        val client = Client.fromHttpApp(routes.orNotFound)
 
-    val client = Client.fromHttpApp(httpApp)
-    client
-      .run(
-        Request[IO](Method.POST, uri"/org.ivovk.connect_rpc_scala.test.TestService/Add")
-          .withEntity(""" { "a": 1, "b": 2} """)
-      )
+        client.run(
+          Request[IO](Method.POST, uri"/org.ivovk.connect_rpc_scala.test.TestService/Add")
+            .withEntity(""" { "a": 1, "b": 2} """)
+        )
+      }
       .use { response =>
         for {
           body <- response.as[String]
           status <- response.status.pure[IO]
         } yield {
-          assert(status == Status.Ok)
           assert(body == """{"sum":3}""")
+          assert(status == Status.Ok)
+          assert(response.headers.get[`Content-Type`].map(_.mediaType).contains(MediaType.application.json))
         }
       }
       .unsafeRunSync()

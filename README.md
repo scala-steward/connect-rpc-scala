@@ -7,7 +7,7 @@ not supported anymore + it's not following a Connect-RPC standard (while being v
 
 At the moment, only unary (non-streaming) methods are supported.
 
-Library focuses only on Scala 3.x support from the beginning.
+Library focuses on Scala 3.x support from the beginning.
 
 ## Usage
 

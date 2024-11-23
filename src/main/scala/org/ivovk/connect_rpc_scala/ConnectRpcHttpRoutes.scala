@@ -2,10 +2,10 @@ package org.ivovk.connect_rpc_scala
 
 import cats.data.EitherT
 import cats.effect.Async
+import cats.effect.kernel.Resource
 import cats.implicits.*
 import io.grpc.*
 import io.grpc.MethodDescriptor.MethodType
-import io.grpc.inprocess.{InProcessChannelBuilder, InProcessServerBuilder}
 import io.grpc.stub.MetadataUtils
 import org.http4s.*
 import org.http4s.dsl.Http4sDsl
@@ -15,7 +15,12 @@ import scalapb.grpc.ClientCalls
 import scalapb.json4s.JsonFormat
 import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 
+import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+
+case class Configuration(
+  waitForShutdown: Duration = 10.seconds,
+)
 
 object ConnectRpcHttpRoutes {
 
@@ -49,33 +54,27 @@ object ConnectRpcHttpRoutes {
     metadata
   }
 
-  def make[F[_] : Async](
-    services: List[ServerServiceDefinition]
-  ): HttpRoutes[F] = {
+  private inline def grpcMethodName(serviceName: String, methodName: String): String =
+    serviceName + "/" + methodName
+
+  private case class RegistryEntry(
+    requestMessageCompanion: GeneratedMessageCompanion[GeneratedMessage],
+    methodDescriptor: MethodDescriptor[GeneratedMessage, GeneratedMessage],
+  )
+
+  def create[F[_] : Async](
+    services: Seq[ServerServiceDefinition],
+    configuration: Configuration = Configuration()
+  ): Resource[F, HttpRoutes[F]] = {
     val dsl = Http4sDsl[F]
     import dsl.*
 
     val methodRegistry = services
       .flatMap(ssd => ssd.getMethods.asScala)
+      .map(_.asInstanceOf[ServerMethodDefinition[GeneratedMessage, GeneratedMessage]])
       .filter(_.getMethodDescriptor.getType == MethodType.UNARY)
-      .map(d => d.getMethodDescriptor.getFullMethodName -> d.asInstanceOf[ServerMethodDefinition[GeneratedMessage, GeneratedMessage]])
-      .toMap
-
-    val name = InProcessServerBuilder.generateName()
-
-    val ipServer  = InProcessServerBuilder.forName(name)
-      .directExecutor()
-      .addServices(services.asJava)
-      .build()
-      .start()
-    val ipChannel = InProcessChannelBuilder.forName(name).directExecutor().build()
-
-
-    val httpApp = HttpRoutes.of[F] {
-      case req@Method.POST -> Root / serviceName / methodName =>
-        val methodDefinition = methodRegistry(serviceName + "/" + methodName)
-
-        val methodDescriptor = methodDefinition.getMethodDescriptor
+      .map { smd =>
+        val methodDescriptor = smd.getMethodDescriptor
 
         val requestMarshaller = methodDescriptor.getRequestMarshaller match
           case m: scalapb.grpc.Marshaller[_] => m
@@ -85,42 +84,61 @@ object ConnectRpcHttpRoutes {
         val companionField = requestMarshaller.getClass.getDeclaredField("companion")
         companionField.setAccessible(true)
 
-        given GeneratedMessageCompanion[GeneratedMessage] = companionField.get(requestMarshaller)
+        val requestCompanion = companionField.get(requestMarshaller)
           .asInstanceOf[GeneratedMessageCompanion[GeneratedMessage]]
 
-        req.as[GeneratedMessage]
-          .flatMap { message =>
-            val channel = ClientInterceptors.intercept(
-              ipChannel,
-              MetadataUtils.newAttachHeadersInterceptor(mkMetadata(req.headers))
-            )
+        val entry = RegistryEntry(
+          requestMessageCompanion = requestCompanion,
+          methodDescriptor = methodDescriptor,
+        )
 
-            Async[F].fromFuture(Async[F].delay {
-              ClientCalls.asyncUnaryCall[GeneratedMessage, GeneratedMessage](
-                channel,
-                methodDefinition.getMethodDescriptor,
-                CallOptions.DEFAULT,
-                message
+        methodDescriptor.getFullMethodName -> entry
+      }
+      .toMap
+
+    for
+      ipChannel <- InProcessChannelBridge.create(services, configuration.waitForShutdown)
+    yield
+      val httpApp = HttpRoutes.of[F] {
+        case req@Method.POST -> Root / serviceName / methodName
+          if methodRegistry.contains(grpcMethodName(serviceName, methodName)) =>
+          val entry = methodRegistry(grpcMethodName(serviceName, methodName))
+
+          given GeneratedMessageCompanion[GeneratedMessage] = entry.requestMessageCompanion
+
+          req.as[GeneratedMessage]
+            .flatMap { message =>
+              val channel = ClientInterceptors.intercept(
+                ipChannel,
+                MetadataUtils.newAttachHeadersInterceptor(mkMetadata(req.headers))
               )
-            }).flatMap(Ok(_))
-          }
-          .recoverWith {
-            case e: StatusRuntimeException =>
-              val description = e.getStatus.getDescription
 
-              e.getStatus.getCode match
-                case io.grpc.Status.Code.NOT_FOUND =>
-                  NotFound(description)
-                case _ => // TODO: map other status codes
-                  InternalServerError(description)
-            case e: StatusException =>
-              InternalServerError(e.getStatus.getDescription)
-            case e: Throwable =>
-              InternalServerError(e.getMessage)
-          }
-    }
+              Async[F].fromFuture(Async[F].delay {
+                ClientCalls.asyncUnaryCall[GeneratedMessage, GeneratedMessage](
+                  channel,
+                  entry.methodDescriptor,
+                  CallOptions.DEFAULT,
+                  message
+                )
+              }).flatMap(Ok(_))
+            }
+            .recoverWith {
+              case e: StatusRuntimeException =>
+                val description = e.getStatus.getDescription
 
-    httpApp
+                e.getStatus.getCode match
+                  case io.grpc.Status.Code.NOT_FOUND =>
+                    NotFound(description)
+                  case _ => // TODO: map other status codes
+                    InternalServerError(description)
+              case e: StatusException =>
+                InternalServerError(e.getStatus.getDescription)
+              case e: Throwable =>
+                InternalServerError(e.getMessage)
+            }
+      }
+
+      httpApp
   }
 
 }
