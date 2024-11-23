@@ -1,9 +1,10 @@
-# Connect-RPC Scala JSON Bridge
+# Connect-RPC ↔ ScalaPB GRPC Bridge
 
 This library provides a bridge between [Connect-RPC](https://connectrpc.com/docs/protocol) protocol and
 [ScalaPB](https://scalapb.github.io) GRPC compiler for Scala.
-It is inspired and takes ideas from [grpc-json-bridge](https://github.com/avast/grpc-json-bridge) library, which seems
-not supported anymore + it's not following a Connect-RPC standard (while being very close to it).
+It is inspired and takes ideas from [grpc-json-bridge](https://github.com/avast/grpc-json-bridge) library, which don't
+seem to be supported anymore + the library doesn't follows a Connect-RPC standard (while being very close to it),
+which makes using clients generated with ConnectRPC not possible.
 
 At the moment, only unary (non-streaming) methods are supported.
 
