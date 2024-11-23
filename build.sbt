@@ -7,7 +7,7 @@ lazy val Versions = new {
   val http4s = "0.23.29"
 }
 
-lazy val root = (project in file("."))
+lazy val core = project
   .settings(
     name := "connect-rpc-scala",
 
