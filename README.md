@@ -2,11 +2,18 @@
 
 This library provides a bridge between [Connect-RPC](https://connectrpc.com/docs/protocol) protocol and
 [ScalaPB](https://scalapb.github.io) GRPC compiler for Scala.
-It is inspired and takes ideas from [grpc-json-bridge](https://github.com/avast/grpc-json-bridge) library, which don't
-seem to be supported anymore + the library doesn't follows a Connect-RPC standard (while being very close to it),
+It is inspired and takes ideas from [grpc-json-bridge](https://github.com/avast/grpc-json-bridge) library, which doesn't
+seem to be supported anymore + the library doesn't follow a Connect-RPC standard (while being very close to it),
 which makes using clients generated with ConnectRPC not possible.
 
-At the moment, only unary (non-streaming) methods are supported.
+Since integration happens on the foundational ScalaPB level, it works with all common GRPC code-generation projects for
+Scala:
+
+* [ScalaPB](https://scalapb.github.io) services with `Future` monad
+* [fs2-grpc](https://github.com/typelevel/fs2-grpc), built on top of `cats-effect` and `fs2`
+* [ZIO gRPC](https://scalapb.github.io/zio-grpc/), built on top of `ZIO` monad (the most feature-rich implementation)
+
+*Note*: at the moment, only unary (non-streaming) methods are supported.
 
 ## Motivation
 
@@ -20,7 +27,10 @@ There are two main protocols for this:
 * [Connect-RPC](https://connectrpc.com/docs/introduction)
 
 They are similar, but GRPC-WEB target is to be as close to GRPC as possible, while Connect-RPC is more
-web-friendly: better TypeScript libraries, better support for JSON, it supports GET-requests, etc.
+web-friendly: it has better client libraries, better web semantics:
+content-type is `application/json` instead of `application/grpc-web+json`, error codes are just normal http codes
+instead of being sent in headers, errors are output in the body of the response JSON-encoded, it supports GET-requests,
+etc.
 
 Both protocols support encoding data in Protobuf and JSON.
 JSON is more web-friendly, but it requires having some component in the middle, providing JSON → Protobuf
@@ -85,4 +95,4 @@ Major issues:
 ## Future improvements
 
 * Support GET-requests
-* Support non-unary methods
+* Support non-unary (streaming) methods

@@ -12,7 +12,7 @@ import org.http4s.*
 import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.`Content-Type`
 import org.ivovk.connect_rpc_scala.http.*
-import org.ivovk.connect_rpc_scala.http.MessageEncoder.given_EntityEncoder_F_A
+import org.ivovk.connect_rpc_scala.http.MessageCodec.given
 import org.slf4j.{Logger, LoggerFactory}
 import org.typelevel.ci.CIStringSyntax
 import scalapb.grpc.ClientCalls
@@ -34,11 +34,6 @@ object ConnectRpcHttpRoutes {
 
   private val logger: Logger = LoggerFactory.getLogger(getClass)
 
-  private case class RegistryEntry(
-    requestMessageCompanion: GeneratedMessageCompanion[GeneratedMessage],
-    methodDescriptor: MethodDescriptor[GeneratedMessage, GeneratedMessage],
-  )
-
   def create[F[_] : Async](
     services: Seq[ServerServiceDefinition],
     configuration: Configuration = Configuration()
@@ -48,50 +43,24 @@ object ConnectRpcHttpRoutes {
 
     val jsonPrinter = configuration.jsonPrinterConfiguration(JsonFormat.printer)
 
-    val coderRegistry = MessageCoderRegistry[F](
-      MCEntry(JsonMessageEncoder[F](jsonPrinter), JsonMessageDecoder[F]),
-      MCEntry(ProtoMessageEncoder[F], ProtoMessageDecoder[F]),
+    val codecRegistry = MessageCodecRegistry[F](
+      JsonMessageCodec[F](jsonPrinter),
+      ProtoMessageCodec[F],
     )
 
-    val methodRegistry = services
-      .flatMap(_.getMethods.asScala)
-      .map(_.asInstanceOf[ServerMethodDefinition[GeneratedMessage, GeneratedMessage]])
-      .map { smd =>
-        val methodDescriptor = smd.getMethodDescriptor
-
-        val requestMarshaller = methodDescriptor.getRequestMarshaller match
-          case m: scalapb.grpc.Marshaller[_] => m
-          case tm: scalapb.grpc.TypeMappedMarshaller[_, _] => tm
-          case unsupported => throw new RuntimeException(s"Unsupported marshaller $unsupported")
-
-        val companionField = requestMarshaller.getClass.getDeclaredField("companion")
-        companionField.setAccessible(true)
-
-        val requestCompanion = companionField.get(requestMarshaller)
-          .asInstanceOf[GeneratedMessageCompanion[GeneratedMessage]]
-
-        val entry = RegistryEntry(
-          requestMessageCompanion = requestCompanion,
-          methodDescriptor = methodDescriptor,
-        )
-
-        methodDescriptor.getFullMethodName -> entry
-      }
-      .toMap
+    val methodRegistry = MethodRegistry(services)
 
     for
       ipChannel <- InProcessChannelBridge.create(services, configuration.waitForShutdown)
     yield
-      val httpApp = HttpRoutes.of[F] {
+      HttpRoutes.of[F] {
         case req@Method.POST -> Root / serviceName / methodName =>
           val grpcMethod  = grpcMethodName(serviceName, methodName)
           val contentType = req.headers.get[`Content-Type`].map(_.mediaType)
 
-          contentType.flatMap(coderRegistry.fromContentType) match {
-            case Some(entry) =>
-              given MessageEncoder[F] = entry.encoder
-
-              given MessageDecoder[F] = entry.decoder
+          contentType.flatMap(codecRegistry.byContentType) match {
+            case Some(codec) =>
+              given MessageCodec[F] = codec
 
               methodRegistry.get(grpcMethod) match {
                 case Some(entry) =>
@@ -113,28 +82,26 @@ object ConnectRpcHttpRoutes {
               UnsupportedMediaType(s"Unsupported Content-Type header ${contentType.map(_.show).orNull}")
           }
       }
-
-      httpApp
   }
 
 
   private def handleUnary[F[_] : Async](
     dsl: Http4sDsl[F],
-    entry: ConnectRpcHttpRoutes.RegistryEntry,
+    entry: RegistryEntry,
     req: Request[F],
     channel: Channel
-  )(using encoder: MessageEncoder[F], decoder: MessageDecoder[F]): F[Response[F]] = {
+  )(using codec: MessageCodec[F]): F[Response[F]] = {
     import dsl.*
 
-    req.headers.get(ci"X-Test-Case-Name") match {
-      case Some(headers) =>
-        logger.trace(s">>> Test Case: ${headers.head.value}")
-      case None => // ignore
+    if (logger.isTraceEnabled) {
+      req.headers.get(ci"X-Test-Case-Name") match {
+        case Some(headers) =>
+          logger.trace(s">>> Test Case: ${headers.head.value}")
+        case None => // ignore
+      }
     }
 
     given GeneratedMessageCompanion[GeneratedMessage] = entry.requestMessageCompanion
-
-    given EntityDecoder[F, GeneratedMessage] = EntityDecoder.decodeBy(MediaRange.`application/*`)(decoder.decode)
 
     req.as[GeneratedMessage]
       .flatMap { message =>
