@@ -1,5 +1,26 @@
 ThisBuild / scalaVersion := "3.3.4"
 
+ThisBuild / organization := "io.github.igor-vovk"
+
+ThisBuild / homepage := Some(url("https://github.com/igor-vovk/connect-rpc-scala"))
+ThisBuild / licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0"))
+ThisBuild / developers := List(
+  Developer(
+    "igor-vovk",
+    "Ihor Vovk",
+    "ideals-03.gushing@icloud.com",
+    url("https://ivovk.me")
+  )
+)
+ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
+
+lazy val noPublish = List(
+  publish := {},
+  publishLocal := {},
+  publishArtifact := false,
+  publish / skip := true
+)
+
 lazy val Versions = new {
   val grpc   = "1.68.1"
   val http4s = "0.23.29"
@@ -7,7 +28,7 @@ lazy val Versions = new {
 
 lazy val core = project
   .settings(
-    name := "connect-rpc-scala",
+    name := "connect-rpc-scala-core",
 
     Compile / PB.targets := Seq(
       scalapb.gen() -> (Compile / sourceManaged).value
@@ -33,15 +54,24 @@ lazy val core = project
     ),
   )
 
-lazy val `conformance` = project
+lazy val conformance = project
   .dependsOn(core)
   .enablePlugins(Fs2Grpc, JavaAppPackaging)
   .settings(
-    publish / skip := true,
+    noPublish,
 
     libraryDependencies ++= Seq(
       "org.http4s" %% "http4s-ember-server" % Versions.http4s,
 
       "ch.qos.logback" % "logback-classic" % "1.5.12" % Runtime,
     ),
+  )
+
+lazy val root = (project in file("."))
+  .aggregate(
+    core,
+    conformance,
+  )
+  .settings(
+    noPublish,
   )
