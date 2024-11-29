@@ -5,6 +5,7 @@ import cats.effect.Async
 import cats.effect.kernel.Resource
 import cats.implicits.*
 import fs2.compression.Compression
+import fs2.{Chunk, Stream}
 import io.grpc.*
 import io.grpc.MethodDescriptor.MethodType
 import io.grpc.stub.MetadataUtils
@@ -12,8 +13,9 @@ import org.http4s.*
 import org.http4s.dsl.Http4sDsl
 import org.http4s.headers.`Content-Type`
 import org.ivovk.connect_rpc_scala.http.*
-import org.ivovk.connect_rpc_scala.http.Headers.{`Connect-Timeout-Ms`, `X-Test-Case-Name`}
+import org.ivovk.connect_rpc_scala.http.Headers.*
 import org.ivovk.connect_rpc_scala.http.MessageCodec.given
+import org.ivovk.connect_rpc_scala.http.QueryParams.*
 import org.slf4j.{Logger, LoggerFactory}
 import scalapb.grpc.ClientCalls
 import scalapb.json4s.{JsonFormat, Printer}
@@ -54,6 +56,41 @@ object ConnectRpcHttpRoutes {
       ipChannel <- InProcessChannelBridge.create(services, configuration.waitForShutdown)
     yield
       HttpRoutes.of[F] {
+        case req@Method.GET -> Root / serviceName / methodName :? EncodingQP(contentType) +& MessageQP(message) =>
+          val grpcMethod = grpcMethodName(serviceName, methodName)
+
+          codecRegistry.byContentType(contentType) match {
+            case Some(codec) =>
+              given MessageCodec[F] = codec
+
+              val media = Media[F](Stream.chunk(Chunk.array(message.getBytes)), req.headers)
+
+              methodRegistry.get(grpcMethod) match {
+                // Support GET-requests for all methods until https://github.com/scalapb/ScalaPB/pull/1774 is merged
+                case Some(entry) if entry.methodDescriptor.isSafe || true =>
+                  entry.methodDescriptor.getType match
+                    case MethodType.UNARY =>
+                      handleUnary(dsl, entry, media, ipChannel)
+                    case unsupported =>
+                      NotImplemented(connectrpc.Error(
+                        code = io.grpc.Status.UNIMPLEMENTED.toConnectCode,
+                        message = s"Unsupported method type: $unsupported".some
+                      ))
+                case Some(_) =>
+                  Forbidden(connectrpc.Error(
+                    code = io.grpc.Status.PERMISSION_DENIED.toConnectCode,
+                    message = s"Method supports calling using POST: $grpcMethod".some
+                  ))
+                case None =>
+                  NotFound(connectrpc.Error(
+                    code = io.grpc.Status.NOT_FOUND.toConnectCode,
+                    message = s"Method not found: $grpcMethod".some
+                  ))
+              }
+            case None =>
+              UnsupportedMediaType(s"Unsupported content-type ${contentType.show}. " +
+                s"Supported content types: ${MediaTypes.allSupported.map(_.show).mkString(", ")}")
+          }
         case req@Method.POST -> Root / serviceName / methodName =>
           val grpcMethod  = grpcMethodName(serviceName, methodName)
           val contentType = req.headers.get[`Content-Type`].map(_.mediaType)
@@ -79,7 +116,8 @@ object ConnectRpcHttpRoutes {
                   ))
               }
             case None =>
-              UnsupportedMediaType(s"Unsupported Content-Type header ${contentType.map(_.show).orNull}")
+              UnsupportedMediaType(s"Unsupported content-type ${contentType.map(_.show).orNull}. " +
+                s"Supported content types: ${MediaTypes.allSupported.map(_.show).mkString(", ")}")
           }
       }
   }
@@ -88,7 +126,7 @@ object ConnectRpcHttpRoutes {
   private def handleUnary[F[_] : Async](
     dsl: Http4sDsl[F],
     entry: RegistryEntry,
-    req: Request[F],
+    req: Media[F],
     channel: Channel
   )(using codec: MessageCodec[F]): F[Response[F]] = {
     import dsl.*
