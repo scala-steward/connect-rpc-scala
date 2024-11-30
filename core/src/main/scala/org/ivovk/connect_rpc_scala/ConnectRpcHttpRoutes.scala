@@ -12,7 +12,7 @@ import io.grpc.stub.MetadataUtils
 import org.http4s.*
 import org.http4s.dsl.Http4sDsl
 import org.ivovk.connect_rpc_scala.http.*
-import org.ivovk.connect_rpc_scala.http.Headers.*
+import org.ivovk.connect_rpc_scala.http.Headers.`X-Test-Case-Name`
 import org.ivovk.connect_rpc_scala.http.MessageCodec.given
 import org.ivovk.connect_rpc_scala.http.QueryParams.*
 import org.slf4j.{Logger, LoggerFactory}
@@ -77,7 +77,7 @@ object ConnectRpcHttpRoutes {
 
           _ <- EitherT.cond[F](
             // Support GET-requests for all methods until https://github.com/scalapb/ScalaPB/pull/1774 is merged
-            httpMethod == Method.POST || (httpMethod == Method.GET && method.methodDescriptor.isSafe) || true,
+            httpMethod == Method.POST || (httpMethod == Method.GET && method.descriptor.isSafe) || true,
             (),
             Forbidden(connectrpc.Error(
               code = io.grpc.Status.PERMISSION_DENIED.toConnectCode,
@@ -85,7 +85,7 @@ object ConnectRpcHttpRoutes {
             ))
           ).leftSemiflatMap(identity)
 
-          response <- method.methodDescriptor.getType match
+          response <- method.descriptor.getType match
             case MethodType.UNARY =>
               EitherT.right(handleUnary(dsl, method, entity, ipChannel))
             case unsupported =>
@@ -115,7 +115,7 @@ object ConnectRpcHttpRoutes {
 
   private def handleUnary[F[_] : Async](
     dsl: Http4sDsl[F],
-    entry: RegistryEntry,
+    method: MethodRegistry.Entry,
     req: RequestEntity[F],
     channel: Channel
   )(using codec: MessageCodec[F]): F[Response[F]] = {
@@ -130,7 +130,7 @@ object ConnectRpcHttpRoutes {
       }
     }
 
-    given GeneratedMessageCompanion[GeneratedMessage] = entry.requestMessageCompanion
+    given GeneratedMessageCompanion[GeneratedMessage] = method.requestMessageCompanion
 
     req.as[GeneratedMessage]
       .flatMap { message =>
@@ -138,7 +138,7 @@ object ConnectRpcHttpRoutes {
         val responseTrailerMetadata = new AtomicReference[Metadata]()
 
         if (logger.isTraceEnabled) {
-          logger.trace(s">>> Method: ${entry.methodDescriptor.getFullMethodName}, Entity: $message")
+          logger.trace(s">>> Method: ${method.descriptor.getFullMethodName}, Entity: $message")
         }
 
         Async[F].fromFuture(Async[F].delay {
@@ -148,26 +148,25 @@ object ConnectRpcHttpRoutes {
               MetadataUtils.newAttachHeadersInterceptor(req.headers.toMetadata),
               MetadataUtils.newCaptureMetadataInterceptor(responseHeaderMetadata, responseTrailerMetadata),
             ),
-            entry.methodDescriptor,
+            method.descriptor,
             CallOptions.DEFAULT
               .pipe(
-                req.headers.get[`Connect-Timeout-Ms`].fold[Endo[CallOptions]](identity) { header =>
-                  _.withDeadlineAfter(header.value, MILLISECONDS)
+                req.timeout.fold[Endo[CallOptions]](identity) { timeout =>
+                  _.withDeadlineAfter(timeout, MILLISECONDS)
                 }
               ),
             message
           )
         }).map { response =>
-          val headers  = responseHeaderMetadata.get().toHeaders
-          val trailers = responseTrailerMetadata.get().toHeaders
+          val headers = org.http4s.Headers.empty ++
+            responseHeaderMetadata.get().toHeaders ++
+            responseTrailerMetadata.get().toTrailingHeaders
 
           if (logger.isTraceEnabled) {
-            logger.trace(s"<<< Headers: $headers, Trailers: $trailers")
+            logger.trace(s"<<< Headers: ${headers.redactSensitive}")
           }
 
-          Response(Ok, headers = headers)
-            .withEntity(response)
-            .withTrailerHeaders(Async[F].pure(trailers))
+          Response(Ok, headers = headers).withEntity(response)
         }
       }
       .recover { case e =>

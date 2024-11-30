@@ -82,8 +82,8 @@ Run the following command to run Connect-RPC conformance tests:
 docker build . --output "out" --progress=plain
 ```
 
-Execution results are output in STDOUT.
-Diagnostic data from the server itself is output in the `out/out.log` file.
+Execution results are output to STDOUT.
+Diagnostic data from the server itself is written to the log file `out/out.log`.
 
 ### Conformance tests status
 
@@ -92,7 +92,6 @@ Current status: 6/79 tests pass
 Known issues:
 
 * fs2-grpc server implementation doesn't support setting response headers
-* Trailers that are set in http4s aren’t being sent to the client
 * `google.protobuf.Any` serialization doesn't follow Connect-RPC spec
 
 ## Future improvements
