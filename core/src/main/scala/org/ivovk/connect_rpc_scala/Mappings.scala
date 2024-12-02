@@ -5,7 +5,7 @@ import org.http4s.{Header, Headers}
 import org.typelevel.ci.CIString
 import scalapb.GeneratedMessage
 
-object Mappings extends HeaderMappings, StatusCodeMappings, AnyMappings
+object Mappings extends HeaderMappings, StatusCodeMappings, ProtoMappings
 
 trait HeaderMappings {
 
@@ -103,14 +103,19 @@ trait StatusCodeMappings {
 
 }
 
-trait AnyMappings {
+trait ProtoMappings {
 
   extension [T <: GeneratedMessage](t: T) {
-    def toProtoAny: com.google.protobuf.any.Any =
+    private def any(typeUrlPrefix: String = "type.googleapis.com/"): com.google.protobuf.any.Any =
       com.google.protobuf.any.Any(
-        typeUrl = "type.googleapis.com/" + t.companion.scalaDescriptor.fullName,
+        typeUrl = typeUrlPrefix + t.companion.scalaDescriptor.fullName,
         value = t.toByteString
       )
+
+    def toProtoAny: com.google.protobuf.any.Any = any()
+
+    def toProtoErrorAny: com.google.protobuf.any.Any = any("")
+
   }
 
 }
