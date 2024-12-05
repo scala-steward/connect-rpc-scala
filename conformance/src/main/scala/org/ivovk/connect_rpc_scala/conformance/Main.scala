@@ -5,7 +5,6 @@ import com.comcast.ip4s.{Port, host, port}
 import connectrpc.conformance.v1.{ConformanceServiceFs2GrpcTrailers, ServerCompatRequest, ServerCompatResponse}
 import org.http4s.ember.server.EmberServerBuilder
 import org.ivovk.connect_rpc_scala.ConnectRouteBuilder
-import scalapb.json4s.TypeRegistry
 
 import java.io.InputStream
 import java.nio.ByteBuffer
@@ -37,15 +36,12 @@ object Main extends IOApp.Simple {
       )
 
       app <- ConnectRouteBuilder.forService[IO](service)
-        // Registering message types in TypeRegistry is required to pass com.google.protobuf.any.Any
-        // JSON-serialization conformance tests
-        .withJsonPrinterConfigurator { p =>
-          p.withTypeRegistry(
-            TypeRegistry.default
-              .addMessage[connectrpc.conformance.v1.UnaryRequest]
-              .addMessage[connectrpc.conformance.v1.IdempotentUnaryRequest]
-              .addMessage[connectrpc.conformance.v1.ConformancePayload.RequestInfo]
-          )
+        .withJsonCodecConfigurator { 
+          // Registering message types in TypeRegistry is required to pass com.google.protobuf.any.Any
+          // JSON-serialization conformance tests
+          _
+            .registerType[connectrpc.conformance.v1.UnaryRequest]
+            .registerType[connectrpc.conformance.v1.IdempotentUnaryRequest]
         }
         .build
 
