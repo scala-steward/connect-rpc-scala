@@ -31,7 +31,7 @@ lazy val noPublish = List(
 
 lazy val Versions = new {
   val grpc   = "1.68.2"
-  val http4s = "0.23.29"
+  val http4s = "0.23.30"
   val logback = "1.5.12"
 }
 
