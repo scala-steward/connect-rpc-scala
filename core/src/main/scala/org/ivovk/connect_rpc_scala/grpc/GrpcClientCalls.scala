@@ -1,85 +1,61 @@
 package org.ivovk.connect_rpc_scala.grpc
 
 import cats.effect.Async
-import com.google.common.util.concurrent.{FutureCallback, Futures, MoreExecutors}
-import io.grpc.stub.{ClientCalls, StreamObserver}
-import io.grpc.{CallOptions, Channel, MethodDescriptor}
+import io.grpc.*
 
 object GrpcClientCalls {
 
+  case class Response[T](value: T, headers: Metadata, trailers: Metadata)
+
   /**
    * Asynchronous unary call.
-   *
-   * Optimized version of the `scalapb.grpc.ClientCalls.asyncUnaryCall` that skips Scala's Future instantiation
-   * and supports cancellation.
    */
   def asyncUnaryCall[F[_] : Async, Req, Resp](
     channel: Channel,
     method: MethodDescriptor[Req, Resp],
     options: CallOptions,
+    headers: Metadata,
     request: Req,
-  ): F[Resp] = {
-    Async[F].async[Resp] { cb =>
-      Async[F].delay {
-        val future = ClientCalls.futureUnaryCall(channel.newCall(method, options), request)
-
-        Futures.addCallback(
-          future,
-          new FutureCallback[Resp] {
-            def onSuccess(result: Resp): Unit = cb(Right(result))
-
-            def onFailure(t: Throwable): Unit = cb(Left(t))
-          },
-          MoreExecutors.directExecutor(),
-        )
-
-        Some(Async[F].delay(future.cancel(true)))
-      }
-    }
-  }
-
-  /**
-   * Implementation that should be faster than the [[asyncUnaryCall]].
-   */
-  def asyncUnaryCall2[F[_] : Async, Req, Resp](
-    channel: Channel,
-    method: MethodDescriptor[Req, Resp],
-    options: CallOptions,
-    request: Req,
-  ): F[Resp] = {
-    Async[F].async[Resp] { cb =>
+  ): F[Response[Resp]] = {
+    Async[F].async[Response[Resp]] { cb =>
       Async[F].delay {
         val call = channel.newCall(method, options)
-
-        ClientCalls.asyncUnaryCall(call, request, new CallbackObserver(cb))
+        call.start(CallbackListener[Resp](cb), headers)
+        call.sendMessage(request)
+        call.halfClose()
+        call.request(2)
 
         Some(Async[F].delay(call.cancel("Cancelled", null)))
       }
     }
   }
 
-  /**
-   * [[StreamObserverToCallListenerAdapter]] either executes [[onNext]] -> [[onCompleted]] during the happy path
-   * or just [[onError]] in case of an error.
-   */
-  private class CallbackObserver[Resp](cb: Either[Throwable, Resp] => Unit) extends StreamObserver[Resp] {
-    private var value: Option[Either[Throwable, Resp]] = None
+  private class CallbackListener[Resp](cb: Either[Throwable, Response[Resp]] => Unit) extends ClientCall.Listener[Resp] {
+    private var headers: Option[Metadata] = None
+    private var message: Option[Resp]     = None
 
-    override def onNext(value: Resp): Unit = {
-      if this.value.isDefined then
-        throw new IllegalStateException("Value already received")
-
-      this.value = Some(Right(value))
+    override def onHeaders(headers: Metadata): Unit = {
+      this.headers = Some(headers)
     }
 
-    override def onError(t: Throwable): Unit = {
-      cb(Left(t))
+    override def onMessage(message: Resp): Unit = {
+      if this.message.isDefined then
+        throw new IllegalStateException("More than one message received")
+
+      this.message = Some(message)
     }
 
-    override def onCompleted(): Unit = {
-      this.value match
-        case Some(v) => cb(v)
-        case None => cb(Left(new IllegalStateException("No value received or call to onCompleted after onError")))
+    override def onClose(status: Status, trailers: Metadata): Unit = {
+      if status.isOk then
+        message match
+          case Some(value) => cb(Right(Response(
+            value = value,
+            headers = headers.getOrElse(new Metadata()),
+            trailers = trailers
+          )))
+          case None => cb(Left(new IllegalStateException("No value received")))
+      else
+        cb(Left(status.asException(trailers)))
     }
   }
 
