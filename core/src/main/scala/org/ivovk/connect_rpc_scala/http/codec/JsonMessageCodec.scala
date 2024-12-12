@@ -14,8 +14,8 @@ import scalapb.{GeneratedMessage as Message, GeneratedMessageCompanion as Compan
 import java.net.URLDecoder
 
 class JsonMessageCodec[F[_] : Sync](
-  parser: Parser,
-  printer: Printer,
+  val parser: Parser,
+  val printer: Printer,
 ) extends MessageCodec[F] {
 
   private val logger     = LoggerFactory.getLogger(getClass)
@@ -41,7 +41,10 @@ class JsonMessageCodec[F[_] : Sync](
           logger.trace(s">>> JSON: $str")
         }
 
-        Sync[F].delay(parser.fromJsonString(str))
+        if str.nonEmpty then
+          Sync[F].delay(parser.fromJsonString(str))
+        else
+          cmp.defaultInstance.pure[F]
       }
       .attemptT
       .leftMap(e => InvalidMessageBodyFailure(e.getMessage, e.some))

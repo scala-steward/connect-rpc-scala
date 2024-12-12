@@ -11,6 +11,7 @@ import org.ivovk.connect_rpc_scala.grpc.*
 import org.ivovk.connect_rpc_scala.http.*
 import org.ivovk.connect_rpc_scala.http.QueryParams.*
 import org.ivovk.connect_rpc_scala.http.codec.*
+import scalapb.GeneratedMessage
 
 import java.util.concurrent.Executor
 import scala.concurrent.ExecutionContext
@@ -108,8 +109,9 @@ final class ConnectRouteBuilder[F[_] : Async] private(
     val httpDsl = Http4sDsl[F]
     import httpDsl.*
 
+    val jsonCodec     = customJsonCodec.getOrElse(JsonMessageCodecBuilder[F]().build)
     val codecRegistry = MessageCodecRegistry[F](
-      customJsonCodec.getOrElse(JsonMessageCodecBuilder[F]().build),
+      jsonCodec,
       ProtoMessageCodec[F](),
     )
 
@@ -124,13 +126,13 @@ final class ConnectRouteBuilder[F[_] : Async] private(
         waitForShutdown,
       )
     yield
-      val handler = new ConnectHandler(
+      val connectHandler = new ConnectHandler(
         channel,
         httpDsl,
         treatTrailersAsHeaders,
       )
 
-      HttpRoutes[F] {
+      val connectRoutes = HttpRoutes[F] {
         case req@Method.GET -> `pathPrefix` / service / method :? EncodingQP(mediaType) +& MessageQP(message) =>
           OptionT.fromOption[F](methodRegistry.get(service, method))
             // Temporary support GET-requests for all methods,
@@ -140,7 +142,7 @@ final class ConnectRouteBuilder[F[_] : Async] private(
               withCodec(httpDsl, codecRegistry, mediaType.some) { codec =>
                 val entity = RequestEntity[F](message, req.headers)
 
-                handler.handle(entity, methodEntry)(using codec)
+                connectHandler.handle(entity, methodEntry)(using codec)
               }
             }
         case req@Method.POST -> `pathPrefix` / service / method =>
@@ -149,12 +151,41 @@ final class ConnectRouteBuilder[F[_] : Async] private(
               withCodec(httpDsl, codecRegistry, req.contentType.map(_.mediaType)) { codec =>
                 val entity = RequestEntity[F](req.body, req.headers)
 
-                handler.handle(entity, methodEntry)(using codec)
+                connectHandler.handle(entity, methodEntry)(using codec)
               }
             }
         case _ =>
           OptionT.none
       }
+
+      val transcodingUrlMatcher = TranscodingUrlMatcher.create[F](
+        methodRegistry.all,
+        pathPrefix,
+      )
+      val transcodingHandler    = new TranscodingHandler(
+        channel,
+        httpDsl,
+        treatTrailersAsHeaders,
+      )
+
+      val transcodingRoutes = HttpRoutes[F] { req =>
+        OptionT.fromOption[F](transcodingUrlMatcher.matchesRequest(req))
+          .semiflatMap { case MatchedRequest(method, json) =>
+            given MessageCodec[F] = jsonCodec
+            given EncodeOptions   = EncodeOptions(None)
+
+            RequestEntity[F](req.body, req.headers)
+              .as[GeneratedMessage](method.requestMessageCompanion)
+              .flatMap { entity =>
+                val entity2     = jsonCodec.parser.fromJson[GeneratedMessage](json)(method.requestMessageCompanion)
+                val finalEntity = method.requestMessageCompanion.parseFrom(entity.toByteArray ++ entity2.toByteArray)
+
+                transcodingHandler.handleUnary(finalEntity, req.headers, method)
+              }
+          }
+      }
+
+      connectRoutes <+> transcodingRoutes
   }
 
   def build: Resource[F, HttpApp[F]] =
