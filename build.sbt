@@ -29,7 +29,7 @@ lazy val noPublish = List(
 )
 
 lazy val Versions = new {
-  val grpc    = "1.69.0"
+  val grpc    = "1.69.1"
   val http4s  = "0.23.30"
   val logback = "1.5.16"
   val scalapb = _root_.scalapb.compiler.Version.scalapbVersion
