@@ -4,14 +4,12 @@ import org.http4s.{ContentCoding, DecodeResult, MediaType}
 import org.ivovk.connect_rpc_scala.http.{RequestEntity, ResponseEntity}
 import scalapb.{GeneratedMessage as Message, GeneratedMessageCompanion as Companion}
 
-import scala.util.chaining.*
-
 case class EncodeOptions(
   encoding: Option[ContentCoding]
 )
 
 object EncodeOptions {
-  given EncodeOptions = EncodeOptions(None)
+  given Default: EncodeOptions = EncodeOptions(None)
 }
 
 trait MessageCodec[F[_]] {

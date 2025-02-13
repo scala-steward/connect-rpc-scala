@@ -1,28 +1,9 @@
 package org.ivovk.connect_rpc_scala.http
 
-import org.http4s.headers.`Content-Length`
-import org.http4s.{EntityBody, Headers, Response}
-
-import scala.util.chaining.*
+import fs2.Stream
 
 case class ResponseEntity[F[_]](
-  headers: Headers,
-  body: EntityBody[F],
+  headers: Map[String, String],
+  body: Stream[F, Byte],
   length: Option[Long] = None,
-) {
-
-  def applyTo(response: Response[F]): Response[F] = {
-    val headers = (response.headers ++ this.headers)
-      .pipe(
-        length match
-          case Some(length) => _.withContentLength(`Content-Length`(length))
-          case None         => identity
-      )
-
-    response.copy(
-      headers = headers,
-      body = body,
-    )
-  }
-
-}
+)

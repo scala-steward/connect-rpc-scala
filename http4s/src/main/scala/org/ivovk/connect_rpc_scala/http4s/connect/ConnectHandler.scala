@@ -1,27 +1,27 @@
-package org.ivovk.connect_rpc_scala.connect
+package org.ivovk.connect_rpc_scala.http4s.connect
 
 import cats.effect.Async
 import cats.implicits.*
 import io.grpc.*
 import io.grpc.MethodDescriptor.MethodType
 import org.http4s.Status.Ok
-import org.http4s.{Header, Response}
-import org.ivovk.connect_rpc_scala.Mappings.*
-import org.ivovk.connect_rpc_scala.grpc.{ClientCalls, MethodRegistry}
-import org.ivovk.connect_rpc_scala.http.Headers.`X-Test-Case-Name`
+import org.http4s.{Headers, Response}
+import org.ivovk.connect_rpc_scala.MetadataToHeaders
+import org.ivovk.connect_rpc_scala.grpc.{ClientCalls, GrpcHeaders, MethodRegistry}
 import org.ivovk.connect_rpc_scala.http.RequestEntity
 import org.ivovk.connect_rpc_scala.http.codec.{Compressor, EncodeOptions, MessageCodec}
-import org.ivovk.connect_rpc_scala.{ErrorHandler, HeaderMapping}
+import org.ivovk.connect_rpc_scala.http4s.ErrorHandler
+import org.ivovk.connect_rpc_scala.http4s.ResponseExtensions.*
+import org.ivovk.connect_rpc_scala.util.PipeSyntax.*
 import org.slf4j.{Logger, LoggerFactory}
 import scalapb.GeneratedMessage
 
 import scala.concurrent.duration.*
-import scala.util.chaining.*
 
 class ConnectHandler[F[_]: Async](
   channel: Channel,
   errorHandler: ErrorHandler[F],
-  headerMapping: HeaderMapping,
+  headerMapping: MetadataToHeaders[Headers],
 ) {
 
   private val logger: Logger = LoggerFactory.getLogger(getClass)
@@ -53,7 +53,7 @@ class ConnectHandler[F[_]: Async](
   )(using MessageCodec[F], EncodeOptions): F[Response[F]] = {
     if (logger.isTraceEnabled) {
       // Used in conformance tests
-      req.headers.get[`X-Test-Case-Name`] match {
+      Option(req.headers.get(GrpcHeaders.XTestCaseNameKey)) match {
         case Some(header) =>
           logger.trace(s">>> Test Case: ${header.value}")
         case None => // ignore
@@ -67,18 +67,15 @@ class ConnectHandler[F[_]: Async](
         }
 
         val callOptions = CallOptions.DEFAULT
-          .pipe(
-            req.timeout match {
-              case Some(timeout) => _.withDeadlineAfter(timeout, MILLISECONDS)
-              case None          => identity
-            }
-          )
+          .pipeIfDefined(Option(req.headers.get(GrpcHeaders.ConnectTimeoutMsKey))) { (options, header) =>
+            options.withDeadlineAfter(header.value, MILLISECONDS)
+          }
 
         ClientCalls.asyncUnaryCall(
           channel,
           method.descriptor,
           callOptions,
-          headerMapping.toMetadata(req.headers),
+          req.headers,
           message,
         )
       }

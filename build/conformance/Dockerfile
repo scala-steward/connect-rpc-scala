@@ -18,46 +18,34 @@ EOF
 
 FROM sbt_image AS build
 
-ADD conformance /app/conformance
-ADD core /app/core
-ADD project /app/project
-ADD build.sbt /app/build.sbt
-
+ADD . /app
 WORKDIR /app
 RUN sbt stage
 
 FROM sbt_image AS runner
 
 COPY --from=conformance /conformance /conformance
-ADD build/conformance/suite.yaml /conformance/
-ADD build/conformance/suite-stable.yaml /conformance/
+ADD build/conformance/*.yaml /conformance/
 COPY --from=build /app/conformance/target/universal/stage /app
 WORKDIR /conformance
 
 RUN mkdir "/logs"
 
+ARG launcher
+ARG config="suite.yaml"
+ARG stable="true"
+
 # Run stable tests first
 RUN echo ">>>>> Running stable tests <<<<<"
 RUN LOGS_PATH="/logs" \
     ./connectconformance \
-    --conf suite-stable.yaml \
+    --conf $config \
     --mode server \
     --parallel 1 \
     -v -vv --trace \
     -- \
-    /app/bin/conformance
-
-# Run unstable tests; allow them to fail
-RUN echo ">>>>> Running unstable tests <<<<<"
-RUN LOGS_PATH="/logs" \
-    ./connectconformance \
-    --conf suite.yaml \
-    --mode server \
-    --parallel 1 \
-    -v -vv --trace \
-    -- \
-    /app/bin/conformance; \
-    exit 0
+    /app/bin/conformance -main org.ivovk.connect_rpc_scala.conformance.$launcher; \
+    if [ "$stable" = "false" ]; then exit 0; fi
 
 FROM scratch AS export
 
