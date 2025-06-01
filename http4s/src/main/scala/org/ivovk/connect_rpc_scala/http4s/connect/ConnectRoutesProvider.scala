@@ -36,7 +36,7 @@ class ConnectRoutesProvider[F[_]: MonadThrow](
             None
         })
         .semiflatMap { methodEntry =>
-          val query = req.uri.query
+          val query     = req.uri.query
           val mediaType =
             if aGetMethod then
               query.multiParams.get("encoding")
@@ -63,7 +63,7 @@ class ConnectRoutesProvider[F[_]: MonadThrow](
   )(r: MessageCodec[F] => F[Response[F]]): F[Response[F]] =
     mediaType.flatMap(registry.byMediaType) match {
       case Some(codec) => r(codec)
-      case None =>
+      case None        =>
         val message = s"Unsupported media-type ${mediaType.show}. " +
           s"Supported media types: ${MediaTypes.allSupported.map(_.show).mkString(", ")}"
 

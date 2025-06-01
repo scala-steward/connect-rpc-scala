@@ -167,7 +167,7 @@ final class Http4sRouteBuilder[F[_]: Async] private (
         treatTrailersAsHeaders,
       )
 
-      val jsonSerDeser = customJsonSerDeser.getOrElse(JsonSerDeserBuilder[F]().build)
+      val jsonSerDeser  = customJsonSerDeser.getOrElse(JsonSerDeserBuilder[F]().build)
       val codecRegistry = MessageCodecRegistry[F](
         jsonSerDeser.codec,
         ProtoMessageCodec[F](),
