@@ -26,7 +26,7 @@ class JsonMessageCodec[F[_]: Sync](
 
   override def decode[A <: Message](entity: RequestEntity[F])(using cmp: Companion[A]): DecodeResult[F, A] = {
     val charset = entity.charset
-    val string = entity.message match {
+    val string  = entity.message match {
       case str: String =>
         Sync[F].delay(URLDecoder.decode(str, charset))
       case stream: Stream[F, Byte] =>

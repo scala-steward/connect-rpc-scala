@@ -82,7 +82,7 @@ class HttpServerHandler[F[_]: Async](
 
             val mediaType = maybeMediaType match {
               case Some(Right(mt)) => mt
-              case Some(Left(e)) =>
+              case Some(Left(e))   =>
                 sendError(ctx, e.getMessage, HttpResponseStatus.UNSUPPORTED_MEDIA_TYPE)
                 return
               case None =>
@@ -111,7 +111,7 @@ class HttpServerHandler[F[_]: Async](
             .flatMap { ei =>
               val response = ei match {
                 case Right(response) => response
-                case Left(e) =>
+                case Left(e)         =>
                   logger.error("Error processing request", e)
                   errorResponse(e.getMessage)
               }

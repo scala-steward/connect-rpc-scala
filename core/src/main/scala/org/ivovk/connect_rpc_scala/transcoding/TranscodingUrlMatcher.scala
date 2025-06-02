@@ -54,7 +54,7 @@ object TranscodingUrlMatcher {
             entries.map(Leaf(_))
           case Some(head) =>
             val maybeVariable = extractVariable(head)
-            val segment = maybeVariable match
+            val segment       = maybeVariable match
               case Some(variable) => variable
               case None           => head
 

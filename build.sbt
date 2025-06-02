@@ -4,8 +4,8 @@ ThisBuild / scalaVersion := "3.3.6"
 
 ThisBuild / organization := "me.ivovk"
 
-ThisBuild / homepage := Some(url("https://github.com/igor-vovk/connect-rpc-scala"))
-ThisBuild / licenses := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+ThisBuild / homepage   := Some(url("https://github.com/igor-vovk/connect-rpc-scala"))
+ThisBuild / licenses   := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / developers := List(
   Developer(
     "igor-vovk",
@@ -46,7 +46,7 @@ lazy val CommonDependencies = Seq(
 
 lazy val core = project
   .settings(
-    name := "connect-rpc-scala-core",
+    name                 := "connect-rpc-scala-core",
     Compile / PB.targets := Seq(
       scalapb.gen() -> (Compile / sourceManaged).value
     ),
@@ -71,7 +71,7 @@ lazy val core = project
 lazy val http4s = project
   .dependsOn(core)
   .settings(
-    name := "connect-rpc-scala-http4s",
+    name              := "connect-rpc-scala-http4s",
     Test / PB.targets := Seq(
       scalapb.gen() -> (Test / sourceManaged).value
     ),

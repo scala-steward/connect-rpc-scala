@@ -141,13 +141,13 @@ class NettyServerBuilder[F[_]: Async: Parallel] private (
 
   private def mkServer(channel: Channel, dispatcher: Dispatcher[F]): Resource[F, Server] = {
     val methodRegistry = MethodRegistry(services)
-    val headerMapping = new NettyHeaderMapping(
+    val headerMapping  = new NettyHeaderMapping(
       headersFilter = incomingHeadersFilter,
       metadataFilter = outgoingHeadersFilter,
       treatTrailersAsHeaders = treatTrailersAsHeaders,
     )
 
-    val jsonSerDeser = customJsonSerDeser.getOrElse(JsonSerDeserBuilder[F]().build)
+    val jsonSerDeser  = customJsonSerDeser.getOrElse(JsonSerDeserBuilder[F]().build)
     val codecRegistry = MessageCodecRegistry[F](
       jsonSerDeser.codec,
       ProtoMessageCodec[F](),
