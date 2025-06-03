@@ -10,7 +10,7 @@ import connectrpc.conformance.v1.{
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.Logger
 import org.ivovk.connect_rpc_scala.conformance.util.ProtoSerDeser
-import org.ivovk.connect_rpc_scala.http4s.Http4sRouteBuilder
+import org.ivovk.connect_rpc_scala.http4s.ConnectHttp4sRouteBuilder
 import org.slf4j.LoggerFactory
 
 /**
@@ -32,14 +32,16 @@ object Http4sServerLauncher extends IOApp.Simple {
   private val logger = LoggerFactory.getLogger(getClass)
 
   override def run: IO[Unit] = {
+    val protoSerDeser = ProtoSerDeser.systemInOut[IO]
+
     val res = for
-      req <- ProtoSerDeser[IO].read[ServerCompatRequest](System.in).toResource
+      req <- protoSerDeser.read[ServerCompatRequest].toResource
 
       service <- ConformanceServiceFs2GrpcTrailers.bindServiceResource(
         ConformanceServiceImpl[IO]()
       )
 
-      app <- Http4sRouteBuilder.forService[IO](service)
+      app <- ConnectHttp4sRouteBuilder.forService[IO](service)
         .withJsonCodecConfigurator {
           // Registering message types in TypeRegistry is required to pass com.google.protobuf.any.Any
           // JSON-serialization conformance tests
@@ -65,7 +67,7 @@ object Http4sServerLauncher extends IOApp.Simple {
       addr = server.address
       resp = ServerCompatResponse(addr.getHostString, addr.getPort)
 
-      _ <- ProtoSerDeser[IO].write(System.out, resp).toResource
+      _ <- protoSerDeser.write(resp).toResource
 
       _ = System.err.println(s"Server started on $addr...")
     yield ()

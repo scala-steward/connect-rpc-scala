@@ -1,49 +1,34 @@
 package org.ivovk.connect_rpc_scala.syntax
 
-import io.grpc.{StatusException, StatusRuntimeException}
+import io.grpc.{Metadata, StatusException, StatusRuntimeException}
 import org.ivovk.connect_rpc_scala.grpc.GrpcHeaders
 import scalapb.GeneratedMessage
 
-object all extends ExceptionSyntax, ProtoMappingsSyntax, MetadataSyntax
+object all extends ExceptionSyntax, MetadataSyntax
 
 trait ExceptionSyntax {
 
   extension (e: StatusRuntimeException) {
     def withDetails[T <: GeneratedMessage](t: T): StatusRuntimeException = {
-      e.getTrailers.put(
-        GrpcHeaders.ErrorDetailsKey,
-        connectrpc.ErrorDetailsAny(
-          `type` = t.companion.scalaDescriptor.fullName,
-          value = t.toByteString,
-        ),
-      )
+      packDetails(e.getTrailers, t)
       e
     }
   }
 
   extension (e: StatusException) {
     def withDetails[T <: GeneratedMessage](t: T): StatusException = {
-      e.getTrailers.put(
-        GrpcHeaders.ErrorDetailsKey,
-        connectrpc.ErrorDetailsAny(
-          `type` = t.companion.scalaDescriptor.fullName,
-          value = t.toByteString,
-        ),
-      )
+      packDetails(e.getTrailers, t);
       e
     }
   }
 
-}
-
-trait ProtoMappingsSyntax {
-
-  extension [T <: GeneratedMessage](t: T) {
-    def toProtoAny: com.google.protobuf.any.Any =
-      com.google.protobuf.any.Any(
-        typeUrl = "type.googleapis.com/" + t.companion.scalaDescriptor.fullName,
-        value = t.toByteString,
-      )
-  }
+  def packDetails[T <: GeneratedMessage](metadata: Metadata, details: T): Unit =
+    metadata.put(
+      GrpcHeaders.ErrorDetailsKey,
+      connectrpc.ErrorDetailsAny(
+        `type` = details.companion.scalaDescriptor.fullName,
+        value = details.toByteString,
+      ),
+    )
 
 }

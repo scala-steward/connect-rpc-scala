@@ -7,7 +7,7 @@ import connectrpc.conformance.v1.{
   ServerCompatResponse,
 }
 import org.ivovk.connect_rpc_scala.conformance.util.ProtoSerDeser
-import org.ivovk.connect_rpc_scala.netty.NettyServerBuilder
+import org.ivovk.connect_rpc_scala.netty.ConnectNettyServerBuilder
 import org.slf4j.LoggerFactory
 
 /**
@@ -29,14 +29,16 @@ object NettyServerLauncher extends IOApp.Simple {
   private val logger = LoggerFactory.getLogger(getClass)
 
   override def run: IO[Unit] = {
+    val protoSerDeser = ProtoSerDeser.systemInOut[IO]
+
     val res = for
-      req <- ProtoSerDeser[IO].read[ServerCompatRequest](System.in).toResource
+      req <- protoSerDeser.read[ServerCompatRequest].toResource
 
       service <- ConformanceServiceFs2GrpcTrailers.bindServiceResource(
         ConformanceServiceImpl[IO]()
       )
 
-      server <- NettyServerBuilder
+      server <- ConnectNettyServerBuilder
         .forService[IO](service)
         .withJsonCodecConfigurator {
           // Registering message types in TypeRegistry is required to pass com.google.protobuf.any.Any
@@ -49,7 +51,7 @@ object NettyServerLauncher extends IOApp.Simple {
 
       resp = ServerCompatResponse(server.host, server.port)
 
-      _ <- ProtoSerDeser[IO].write(System.out, resp).toResource
+      _ <- protoSerDeser.write(resp).toResource
 
       _ = System.err.println(s"Server started on ${server.host}:${server.port}...")
       _ = logger.info(s"Netty-server started on ${server.host}:${server.port}...")

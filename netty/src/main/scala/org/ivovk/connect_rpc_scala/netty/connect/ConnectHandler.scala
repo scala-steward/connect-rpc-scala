@@ -6,8 +6,8 @@ import io.grpc.MethodDescriptor.MethodType
 import io.grpc.{CallOptions, Channel, Status}
 import io.netty.handler.codec.http.{HttpHeaders, HttpResponse}
 import org.ivovk.connect_rpc_scala.grpc.{ClientCalls, GrpcHeaders, MethodRegistry}
-import org.ivovk.connect_rpc_scala.http.codec.{Compressor, EncodeOptions, MessageCodec}
-import org.ivovk.connect_rpc_scala.http.{MetadataToHeaders, RequestEntity}
+import org.ivovk.connect_rpc_scala.http.MetadataToHeaders
+import org.ivovk.connect_rpc_scala.http.codec.{Compressor, EncodeOptions, EntityToDecode, MessageCodec}
 import org.ivovk.connect_rpc_scala.netty.{ErrorHandler, Response}
 import org.ivovk.connect_rpc_scala.util.PipeSyntax.*
 import org.slf4j.LoggerFactory
@@ -24,7 +24,7 @@ class ConnectHandler[F[_]: Async](
   private val logger = LoggerFactory.getLogger(getClass)
 
   def handle(
-    req: RequestEntity[F],
+    req: EntityToDecode[F],
     method: MethodRegistry.Entry,
   )(using MessageCodec[F]): F[HttpResponse] = {
     given EncodeOptions = EncodeOptions(
@@ -43,15 +43,14 @@ class ConnectHandler[F[_]: Async](
   }
 
   private def handleUnary(
-    req: RequestEntity[F],
+    req: EntityToDecode[F],
     method: MethodRegistry.Entry,
   )(using codec: MessageCodec[F], encodeOptions: EncodeOptions): F[HttpResponse] = {
     if (logger.isTraceEnabled) {
       // Used in conformance tests
       Option(req.headers.get(GrpcHeaders.XTestCaseNameKey)) match {
-        case Some(header) =>
-          logger.trace(s">>> Test Case: ${header.value}")
-        case None => // ignore
+        case Some(testCase) => logger.trace(s">>> Test Case: $testCase")
+        case None           => // ignore
       }
     }
 
@@ -62,8 +61,8 @@ class ConnectHandler[F[_]: Async](
         }
 
         val callOptions = CallOptions.DEFAULT
-          .pipeIfDefined(Option(req.headers.get(GrpcHeaders.ConnectTimeoutMsKey))) { (options, header) =>
-            options.withDeadlineAfter(header.value, MILLISECONDS)
+          .pipeIfDefined(Option(req.headers.get(GrpcHeaders.ConnectTimeoutMsKey))) { (options, timeoutMs) =>
+            options.withDeadlineAfter(timeoutMs, MILLISECONDS)
           }
 
         ClientCalls.asyncUnaryCall(
