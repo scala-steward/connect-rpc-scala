@@ -113,7 +113,7 @@ Features comparison:
 
 |                       | __http4s frontend__                 | __Netty frontend__                  |
 |-----------------------|-------------------------------------|-------------------------------------|
-| __Status__            | 🧡 production ready                 | alpha                               |
+| __Status__            | production ready                    | alpha                               |
 |                       |                                     |                                     |
 | __ConnectRPC server__ | ✅                                   | ✅                                   |
 | - JSON encoding       | ✅ (fully conformant)                | ✅ (fully conformant)                |
@@ -148,8 +148,10 @@ Built-in [GRPC Transcoding](https://cloud.google.com/endpoints/docs/grpc/transco
 
 ![Maven Central](https://img.shields.io/maven-central/v/me.ivovk/connect-rpc-scala-core_3?style=flat-square&color=green)
 
-Installing http4s frontend (supports server, client) with SBT, you also need to install one of `http4s` server
-implementations:
+Check [examples](https://github.com/igor-vovk/connect-rpc-scala/tree/main/example) directory for some examples of using
+the library.
+
+In case of http4s frontend, you will also need one of `http4s` server implementations, Ember in this case:
 
 ```scala
 libraryDependencies ++= Seq(
@@ -161,7 +163,7 @@ libraryDependencies ++= Seq(
 )
 ```
 
-Netty frontend (server only, no client support yet) can be installed with SBT:
+Netty frontend (server only, no client support yet) can be installed by adding the following dependency:
 
 ```scala
 libraryDependencies ++= Seq(
