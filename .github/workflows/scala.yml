@@ -31,29 +31,8 @@ jobs:
       - name: Run tests
         run: sbt test
 
-  conformance:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    strategy:
-      matrix:
-        config:
-          - name: Netty Server
-            profile: netty-server
-          - name: Http4s Server
-            profile: http4s-server
-          - name: Http4s Server (non-stable)
-            profile: http4s-server-nonstable
-          - name: Http4s Client
-            profile: http4s-client
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run conformance tests for ${{ matrix.config.name }}
-        run: make test-conformance PROFILE=${{ matrix.config.profile }}
+      - name: Run conformance tests
+        run: make test-conformance-stable
 
   dependency-graph:
     name: Update Dependency Graph
