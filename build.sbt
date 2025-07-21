@@ -152,7 +152,7 @@ lazy val example_zio_client_server = project.in(file("examples/zio_client_server
     libraryDependencies ++= Seq(
       "org.http4s"    %% "http4s-ember-server" % Versions.http4s,
       "org.http4s"    %% "http4s-ember-client" % Versions.http4s,
-      "dev.zio"       %% "zio"                 % "2.1.19",
+      "dev.zio"       %% "zio"                 % "2.1.20",
       "dev.zio"       %% "zio-interop-cats"    % "23.1.0.5",
       "ch.qos.logback" % "logback-classic"     % Versions.logback % Runtime,
     ),
